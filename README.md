@@ -201,7 +201,7 @@ python -m streamlit run streamlit_app.py --server.port=8002
 docker build -t rag-agent .
 
 # Run container
-docker run -p 8002:8002 rag_agent
+docker run -p 8002:8002 rag-agent
 
 # To check logs 
 docker logs <container_name> -f
@@ -219,4 +219,4 @@ docker logs <container_name> -f
 This project is licensed under the MIT License.
 
 
-Built using :  LangGraph, OpenAI, Streamlit, and FAISS# rag-agent
+Built using :  LangGraph, OpenAI, Streamlit, and FAISS
