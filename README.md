@@ -64,6 +64,7 @@ VECTOR_SEARCH_K=2
 
 # Data Folder for Internal Documents
 DATA_FOLDER=data
+DEBUG_MODE=false #make it true for logs related to state messages
 ```
 
 ### 3. Internal Documents Setup
@@ -215,31 +216,44 @@ response2 = agent.run("Can you elaborate on the first one?", thread_id)
 
 ## Development
 
-### Regenerating Architecture Diagrams
-If you modify the RAG agent architecture and want to update the diagrams:
+## Technical Decisions & RAG Design
 
-```bash
-# Generate actual LangGraph workflow diagram
-python test_graph_display.py
+### Chunking Strategy
+- **Chunk Size**: 1024 tokens - Balances context richness with retrieval precision
+- **Overlap**: 256 tokens - Ensures important information isn't lost at chunk boundaries
+- **Rationale**: Optimal for document Q&A while staying within LLM context limits
 
-# Generate custom data flow diagram  
-python create_graph_diagram.py
-```
+### Model Selection
+- **LLM**: `gpt-4o-mini` - Cost-effective while maintaining high quality responses
+- **Embeddings**: `text-embedding-ada-002` - Proven performance, 1536 dimensions
+- **Temperature**: 0.25 - Low for factual accuracy, slight creativity for natural responses
 
-This will create/update:
-- `rag_agent_langgraph.png`: Actual LangGraph state machine from your code
-- `rag_agent_dataflow.png`: RAG pipeline data flow diagram
-- `rag_agent_workflow.png`: Custom matplotlib workflow diagram (alternative)
+### Retrieval Approach
+- **Vector Store**: FAISS - Fast similarity search without external dependencies
+- **Top-K**: 2 chunks - Focused context to avoid information overload
+- **Strategy**: Semantic similarity search with LangGraph tool integration
 
-You can also generate diagrams programmatically:
-```python
-from modules.rag_agent import RAGAgent
+### Prompt Engineering
+- **Enhanced System Prompts**: Professional, structured prompts loaded from `config/prompts.py`
+- **Response Format**: Structured responses with Answer, Source, and Additional Context sections
+- **Source Attribution**: Clear indication of which documents information comes from
+- **Transparency**: Explicit acknowledgment when information is not available in documents
+- **Query Classification**: Automatic classification of query types (factual, analytical, procedural, summary)
+- **Fallback Responses**: Intelligent fallback messages for various scenarios
+- **Context Assembly**: Smart context truncation and assembly with confidence indicators
 
-agent = RAGAgent()
-agent.load_internal_documents()  # Load documents to show tools
-agent.save_graph("my_workflow.png")  # Save LangGraph diagram
-agent.display_graph()  # Display in Jupyter notebooks
-```
+### Architecture Decisions
+- **LangGraph**: State machine for robust conversation flow and tool integration
+- **Memory**: MemorySaver for conversation persistence across interactions
+- **Tools**: Function calling pattern for clean retrieval integration
+- **Error Handling**: Comprehensive validation for document processing and user feedback
+
+### What Would Be Added With More Time
+- **Enhanced Context Management**: Token counting, smart truncation, relevance scoring
+- **Quality Controls**: Response validation, source attribution, confidence scoring
+- **Advanced Retrieval**: Re-ranking, similarity thresholds, multi-query strategies
+- **Evaluation Framework**: Automated testing, performance benchmarks, quality metrics
+- **Production Features**: Rate limiting, caching, monitoring, logging
 
 ## Deployment
 
@@ -270,6 +284,5 @@ docker logs <container_name> -f
 ## License
 
 This project is licensed under the MIT License.
-
 
 Built using :  LangGraph, OpenAI, Streamlit, and FAISS

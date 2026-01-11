@@ -2,6 +2,7 @@
 
 import os
 import glob
+import sys
 from typing import List, Sequence, Annotated, TypedDict, Optional
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -16,6 +17,9 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from dotenv import load_dotenv
 import uuid
+
+# Import prompts config
+from .config.prompts import config
 
 # Load environment variables
 load_dotenv()
@@ -41,6 +45,7 @@ class RAGAgent:
 
         self.vectorstore = None
         self.memory = MemorySaver()
+        self.debug = os.getenv("DEBUG_MODE", "false").lower() == "true"
         
         # Initialize LLM with environment settings
         model = os.getenv("OPENAI_MODEL")
@@ -73,6 +78,60 @@ class RAGAgent:
         else:
             self.vectorstore = None
 
+    def clean_pdf_text(self, text: str) -> str:
+        """
+        Clean and normalize PDF text that may have formatting issues
+        """
+        import re
+        
+        # Remove excessive whitespace and normalize line breaks
+        text = re.sub(r'\n\s*\n', '\n\n', text)  # Multiple newlines to double newlines
+        
+        # Fix common PDF extraction issues where words are split by single spaces/newlines
+        # Pattern: single letter/word followed by newline and space
+        text = re.sub(r'(\w)\s*\n\s*(?=\w)', r'\1 ', text)
+        
+        # Fix bullet points and special characters
+        text = re.sub(r'●\s*', '• ', text)
+        text = re.sub(r'•\s*', '• ', text)
+        
+        # Join lines that seem to be part of the same sentence/phrase
+        # Look for lines that end with lowercase and start with lowercase (likely continuation)
+        lines = text.split('\n')
+        cleaned_lines = []
+        current_line = ""
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                if current_line:
+                    cleaned_lines.append(current_line)
+                    current_line = ""
+                cleaned_lines.append("")
+                continue
+                
+            # If current line ends with lowercase/punctuation and next line starts with lowercase,
+            # they're likely the same sentence
+            if (current_line and len(current_line) > 0 and 
+                (current_line[-1].islower() or current_line[-1] in ',-') and
+                line and len(line) > 0 and line[0].islower()):
+                current_line += " " + line
+            else:
+                if current_line:
+                    cleaned_lines.append(current_line)
+                current_line = line
+        
+        if current_line:
+            cleaned_lines.append(current_line)
+        
+        cleaned_text = '\n'.join(cleaned_lines)
+        
+        # Final cleanup
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text)  # Multiple spaces to single
+        cleaned_text = re.sub(r'\n\s+', '\n', cleaned_text)  # Leading spaces after newlines
+        
+        return cleaned_text.strip()
+
     def ingest_document(self, file_path: str):
         # Use for user-uploaded TXT or PDF
         try:
@@ -89,8 +148,11 @@ class RAGAgent:
                 for i, doc in enumerate(docs):
                     content = doc.page_content.strip()
                     if content and len(content) > 10:  # Must have at least 10 characters
+                        # Clean the PDF text to fix formatting issues
+                        cleaned_content = self.clean_pdf_text(content)
+                        doc.page_content = cleaned_content
                         non_empty_docs.append(doc)
-                        print(f"Page {i+1}: {len(content)} characters")
+                        print(f"Page {i+1}: {len(content)} characters (cleaned to {len(cleaned_content)} chars)")
                     else:
                         print(f"Page {i+1}: Empty or too short ({len(content)} characters) - skipping")
                 
@@ -149,12 +211,61 @@ class RAGAgent:
             retriever,
             name="RAG_Doc_Search",
             description="""
-            This tool searches the uploaded document for relevant information to answer user questions.
+            Search the uploaded document for relevant information to answer user questions.
+            This tool will return the most relevant document passages based on semantic similarity.
+            Use this tool when you need to find specific information from the uploaded document.
+            The retrieved context should be used as the primary source for your responses.
             """
         )
 
+    def prompt_with_context(self, context_chunks, user_question, confidence_score=None):
+        """
+        Enhanced prompt assembly with context management using config prompts
+        """
+        max_context_length = 3000  # Approximate token limit for context
+        
+        # Prepare context text
+        if len(str(context_chunks)) > max_context_length:
+            # Smart truncation - keep most relevant chunks
+            context_summary = f"[Context truncated for length - showing top {len(context_chunks)} most relevant passages]\n\n"
+            context_text = context_summary + "\n\n".join([chunk.page_content[:500] + "..." for chunk in context_chunks])
+        else:
+            context_text = "\n\n".join([chunk.page_content for chunk in context_chunks])
+        
+        # Add confidence indicator if available
+        confidence_note = ""
+        if confidence_score:
+            confidence_note = f"\n**Retrieval Confidence:** {confidence_score:.2f}/1.0\n"
+        
+        # Use the context assembly prompt from config
+        return config["rag_agent"]["context_assembly_prompt"].format(
+            context=context_text + confidence_note,
+            question=user_question
+        )
+
+    def classify_query(self, query):
+        """Classify query type to optimize response strategy"""
+        query_types = {
+            "factual": ["what", "who", "when", "where", "how much", "how many"],
+            "analytical": ["why", "how", "compare", "analyze", "explain"],
+            "procedural": ["steps", "process", "procedure", "how to"],
+            "summary": ["summarize", "overview", "main points", "key"]
+        }
+        
+        query_lower = query.lower()
+        for query_type, keywords in query_types.items():
+            if any(keyword in query_lower for keyword in keywords):
+                return query_type
+        return "general"
 
     def chat_agent(self, state: RAGAgentState) -> RAGAgentState:
+        if self.debug:
+            print("chat_agent invoked with messages:")
+            print("==== All State Messages ====")
+            for msg in state["messages"]:
+                print(f"- {type(msg).__name__}: {msg.content}") 
+            print("==== All State Messages ====")
+
         if not self.vectorstore:
             system_prompt = SystemMessage(
                 """
@@ -163,14 +274,55 @@ class RAGAgent:
                 Be polite and explain that once they upload a document, you'll be able to answer questions about it.
                 """
             )
+            response = self.llm.invoke([system_prompt] + state["messages"])
         else:
-            system_prompt = SystemMessage(
-                """
-                You are a helpful assistant that answers questions using ONLY the provided document tool.
-                If you do not know the answer, say so. Do not use your own memory.
-                """
-            )
-        response = self.llm.invoke([system_prompt] + state["messages"])
+            last_human_message = None
+            for message in reversed(state["messages"]):
+                if isinstance(message, HumanMessage):
+                    last_human_message = message
+                    break
+            
+            if last_human_message:
+                try:
+                    # Get context using enhanced prompting
+                    vector_search_k = int(os.getenv("VECTOR_SEARCH_K"))
+                    retriever = self.vectorstore.as_retriever(search_kwargs={"k": vector_search_k})
+                    context_chunks = retriever.invoke(last_human_message.content)
+                    
+                    if context_chunks:
+                        # Use enhanced prompt assembly
+                        enhanced_context = self.prompt_with_context(context_chunks, last_human_message.content)
+                        query_type = self.classify_query(last_human_message.content)
+                        
+                        # Create enhanced system prompt with context
+                        system_prompt = SystemMessage(
+                            config["rag_agent"]["system_prompt"] + 
+                            f"\n\n**Current Query Type:** {query_type}\n\n" +
+                            enhanced_context
+                        )
+
+                        if self.debug:
+                            print("==== System Prompt with Context ====")
+                            print("system_prompt :", system_prompt)
+
+                        # Use conversation history but with enhanced context
+                        conversation_messages = [system_prompt] + state["messages"][:-1] + [last_human_message]
+                        response = self.llm.invoke(conversation_messages)
+                    else:
+                        # Fallback if no context found
+                        system_prompt = SystemMessage(config["rag_agent"]["system_prompt"])
+                        response = self.llm.invoke([system_prompt] + state["messages"])
+                        
+                except Exception as e:
+                    print(f"Error in enhanced chat_agent: {str(e)}")
+                    # Fallback to standard approach
+                    system_prompt = SystemMessage(config["rag_agent"]["system_prompt"])
+                    response = self.llm.invoke([system_prompt] + state["messages"])
+            else:
+                # No human message found, use standard approach
+                system_prompt = SystemMessage(config["rag_agent"]["system_prompt"])
+                response = self.llm.invoke([system_prompt] + state["messages"])
+        
         return {"messages": [response]}
 
     def should_continue(self, state: RAGAgentState):
@@ -203,17 +355,40 @@ class RAGAgent:
         return graph.compile(checkpointer=self.memory)
 
     def run(self, user_message: str, thread_id: str = None) -> str:
+        """
+        Main run method using LangGraph with enhanced prompting and conversation memory
+        """
         # Use provided thread_id or generate a new one
-        import uuid
         if not thread_id:
             thread_id = str(uuid.uuid4())
         
-        config = {"configurable": {"thread_id": thread_id}}
-        state = {"messages": [HumanMessage(content=user_message)]}
+        config_dict = {"configurable": {"thread_id": thread_id}}
+        
+        # Get existing state from checkpoint or create new state
+        # LangGraph's checkpointer will automatically merge with existing conversation
+        try:
+            existing_checkpoint = self.memory.get(config_dict)
+            if existing_checkpoint and "channel_values" in existing_checkpoint:
+                # Append to existing conversation
+                existing_messages = existing_checkpoint["channel_values"].get("messages", [])
+
+                if self.debug:
+                    print(f"Existing messages found for thread_id {thread_id}:")
+                    for msg in existing_messages:
+                        print(f"- {type(msg).__name__}: {msg.content}")
+
+                state = {"messages": existing_messages + [HumanMessage(content=user_message)]}
+            else:
+                # Start new conversation
+                state = {"messages": [HumanMessage(content=user_message)]}
+        except Exception as e:
+            print(f"Warning: Could not retrieve existing checkpoint: {e}")
+            # Fallback to new conversation
+            state = {"messages": [HumanMessage(content=user_message)]}
         
         try:
-            # Use invoke for conversation with memory
-            result = self.app.invoke(state, config=config)
+            # Use LangGraph with enhanced prompting and conversation memory
+            result = self.app.invoke(state, config=config_dict)
             
             if "messages" in result and result["messages"]:
                 last_message = result["messages"][-1]
@@ -290,17 +465,24 @@ class RAGAgent:
             return []
     
     def create_internal_retriever_tool(self, file_names):
-        """Create retriever tool for internal documents"""
+        """Create retriever tool for internal documents with enhanced prompting"""
         if not self.vectorstore:
             raise Exception("No documents loaded from data folder")
         
         vector_search_k = int(os.getenv("VECTOR_SEARCH_K", "5"))
         retriever = self.vectorstore.as_retriever(search_kwargs={"k": vector_search_k})
         
+        # Use the standard retriever tool but with enhanced description
         file_list = ", ".join(file_names)
         description = f"""
-        This tool searches the internal knowledge base containing the following documents: {file_list}.
-        Use this tool to find relevant information from these internal documents to answer user questions.
+        Search the internal knowledge base for relevant information to answer user questions.
+        
+        Available documents: {file_list}
+        
+        This tool will return the most relevant passages from these internal documents based on semantic similarity.
+        Use this tool when you need to find specific information from the company's internal knowledge base.
+        The retrieved context should be used as the primary source for your responses, and you should mention
+        which document(s) the information comes from when possible.
         """
         
         return create_retriever_tool(
