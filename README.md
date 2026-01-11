@@ -107,6 +107,31 @@ python -m streamlit run streamlit_app.py --server.port=8002
 
 ## Architecture
 
+### System Diagrams
+
+#### LangGraph Workflow
+The RAG agent is built using LangGraph's state machine architecture, providing robust conversation flow management:
+
+![RAG Agent Workflow](rag_agent_langgraph.png)
+
+This diagram shows the actual LangGraph workflow with:
+- **chat_agent**: Main conversational AI that processes user messages and decides on tool usage
+- **tools**: Retrieval tools for document search (Internal_Knowledge_Search for company documents)
+- **Conditional Logic**: Smart routing based on whether tool calls are needed in the response
+- **Memory**: Persistent conversation threads with context retention
+
+#### Data Flow Pipeline  
+The system processes documents and queries through a comprehensive RAG pipeline:
+
+![RAG Agent Data Flow](rag_agent_dataflow.png)
+
+**Processing Steps:**
+1. **Document Ingestion**: PDF/TXT file processing
+2. **Text Chunking**: Intelligent splitting with overlap
+3. **Embedding Generation**: OpenAI embeddings for semantic understanding
+4. **Vector Storage**: FAISS-based similarity search capability
+5. **Query Processing**: Real-time retrieval and response generation
+
 ### Core Components
 
 #### RAGAgent (`modules/rag_agent.py`)
@@ -186,6 +211,34 @@ thread_id = "user-session-123"
 # Multiple questions in same thread maintain context
 response1 = agent.run("What are the key features?", thread_id)
 response2 = agent.run("Can you elaborate on the first one?", thread_id)
+```
+
+## Development
+
+### Regenerating Architecture Diagrams
+If you modify the RAG agent architecture and want to update the diagrams:
+
+```bash
+# Generate actual LangGraph workflow diagram
+python test_graph_display.py
+
+# Generate custom data flow diagram  
+python create_graph_diagram.py
+```
+
+This will create/update:
+- `rag_agent_langgraph.png`: Actual LangGraph state machine from your code
+- `rag_agent_dataflow.png`: RAG pipeline data flow diagram
+- `rag_agent_workflow.png`: Custom matplotlib workflow diagram (alternative)
+
+You can also generate diagrams programmatically:
+```python
+from modules.rag_agent import RAGAgent
+
+agent = RAGAgent()
+agent.load_internal_documents()  # Load documents to show tools
+agent.save_graph("my_workflow.png")  # Save LangGraph diagram
+agent.display_graph()  # Display in Jupyter notebooks
 ```
 
 ## Deployment

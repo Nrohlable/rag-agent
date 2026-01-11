@@ -319,3 +319,25 @@ class RAGAgent:
         all_files = pdf_files + txt_files
         
         return [os.path.basename(f) for f in all_files]
+
+    def display_graph(self):
+        """Display the LangGraph workflow diagram"""
+        try:
+            from IPython.display import Image, display
+            display(Image(self.app.get_graph().draw_mermaid_png()))
+        except ImportError:
+            print("IPython not available. Use save_graph() to save the diagram to a file.")
+        except Exception as e:
+            print(f"Error displaying graph: {str(e)}")
+
+    def save_graph(self, filename="rag_agent_graph.png"):
+        """Save the LangGraph workflow diagram to a file"""
+        try:
+            graph_png = self.app.get_graph().draw_mermaid_png()
+            with open(filename, "wb") as f:
+                f.write(graph_png)
+            print(f"Graph saved as {filename}")
+            return filename
+        except Exception as e:
+            print(f"Error saving graph: {str(e)}")
+            return None
