@@ -31,7 +31,7 @@ A sophisticated document question-answering system built with LangGraph agentic 
 ### 1. Environment Setup
 ```bash
 # Clone and navigate to project
-cd ai_coach_agent_docker
+cd rag-agent
 
 # Configure Python environment
 python -m venv rag_agent
@@ -188,7 +188,6 @@ response1 = agent.run("What are the key features?", thread_id)
 response2 = agent.run("Can you elaborate on the first one?", thread_id)
 ```
 
-```
 ## Deployment
 
 ### Local Development
@@ -203,6 +202,9 @@ docker build -t rag-agent .
 
 # Run container
 docker run -p 8002:8002 rag_agent
+
+# To check logs 
+docker logs <container_name> -f
 ```
 
 ### Adding New Features
