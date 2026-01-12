@@ -31,7 +31,7 @@ A sophisticated document question-answering system built with LangGraph agentic 
 ### 1. Environment Setup
 ```bash
 # Clone and navigate to project
-cd ai_coach_agent_docker
+cd rag-agent
 
 # Configure Python environment
 python -m venv rag_agent
@@ -64,6 +64,7 @@ VECTOR_SEARCH_K=2
 
 # Data Folder for Internal Documents
 DATA_FOLDER=data
+DEBUG_MODE=false #make it true for logs related to state messages
 ```
 
 ### 3. Internal Documents Setup
@@ -106,6 +107,31 @@ python -m streamlit run streamlit_app.py --server.port=8002
 - **Clear Conversation**: Start fresh while keeping the same document
 
 ## Architecture
+
+### System Diagrams
+
+#### LangGraph Workflow
+The RAG agent is built using LangGraph's state machine architecture, providing robust conversation flow management:
+
+![RAG Agent Workflow](rag_agent_langgraph.png)
+
+This diagram shows the actual LangGraph workflow with:
+- **chat_agent**: Main conversational AI that processes user messages and decides on tool usage
+- **tools**: Retrieval tools for document search (Internal_Knowledge_Search for company documents)
+- **Conditional Logic**: Smart routing based on whether tool calls are needed in the response
+- **Memory**: Persistent conversation threads with context retention
+
+#### Data Flow Pipeline  
+The system processes documents and queries through a comprehensive RAG pipeline:
+
+![RAG Agent Data Flow](rag_agent_dataflow.png)
+
+**Processing Steps:**
+1. **Document Ingestion**: PDF/TXT file processing
+2. **Text Chunking**: Intelligent splitting with overlap
+3. **Embedding Generation**: OpenAI embeddings for semantic understanding
+4. **Vector Storage**: FAISS-based similarity search capability
+5. **Query Processing**: Real-time retrieval and response generation
 
 ### Core Components
 
@@ -188,7 +214,47 @@ response1 = agent.run("What are the key features?", thread_id)
 response2 = agent.run("Can you elaborate on the first one?", thread_id)
 ```
 
-```
+## Development
+
+## Technical Decisions & RAG Design
+
+### Chunking Strategy
+- **Chunk Size**: 1024 tokens - Balances context richness with retrieval precision
+- **Overlap**: 256 tokens - Ensures important information isn't lost at chunk boundaries
+- **Rationale**: Optimal for document Q&A while staying within LLM context limits
+
+### Model Selection
+- **LLM**: `gpt-4o-mini` - Cost-effective while maintaining high quality responses
+- **Embeddings**: `text-embedding-ada-002` - Proven performance, 1536 dimensions
+- **Temperature**: 0.25 - Low for factual accuracy, slight creativity for natural responses
+
+### Retrieval Approach
+- **Vector Store**: FAISS - Fast similarity search without external dependencies
+- **Top-K**: 2 chunks - Focused context to avoid information overload
+- **Strategy**: Semantic similarity search with LangGraph tool integration
+
+### Prompt Engineering
+- **Enhanced System Prompts**: Professional, structured prompts loaded from `config/prompts.py`
+- **Response Format**: Structured responses with Answer, Source, and Additional Context sections
+- **Source Attribution**: Clear indication of which documents information comes from
+- **Transparency**: Explicit acknowledgment when information is not available in documents
+- **Query Classification**: Automatic classification of query types (factual, analytical, procedural, summary)
+- **Fallback Responses**: Intelligent fallback messages for various scenarios
+- **Context Assembly**: Smart context truncation and assembly with confidence indicators
+
+### Architecture Decisions
+- **LangGraph**: State machine for robust conversation flow and tool integration
+- **Memory**: MemorySaver for conversation persistence across interactions
+- **Tools**: Function calling pattern for clean retrieval integration
+- **Error Handling**: Comprehensive validation for document processing and user feedback
+
+### What Would Be Added With More Time
+- **Enhanced Context Management**: Token counting, smart truncation, relevance scoring
+- **Quality Controls**: Response validation, source attribution, confidence scoring
+- **Advanced Retrieval**: Re-ranking, similarity thresholds, multi-query strategies
+- **Evaluation Framework**: Automated testing, performance benchmarks, quality metrics
+- **Production Features**: Rate limiting, caching, monitoring, logging
+
 ## Deployment
 
 ### Local Development
@@ -202,7 +268,10 @@ python -m streamlit run streamlit_app.py --server.port=8002
 docker build -t rag-agent .
 
 # Run container
-docker run -p 8002:8002 rag_agent
+docker run -p 8002:8002 rag-agent
+
+# To check logs 
+docker logs <container_name> -f
 ```
 
 ### Adding New Features
@@ -216,5 +285,4 @@ docker run -p 8002:8002 rag_agent
 
 This project is licensed under the MIT License.
 
-
-Built using :  LangGraph, OpenAI, Streamlit, and FAISS# rag-agent
+Built using :  LangGraph, OpenAI, Streamlit, and FAISS

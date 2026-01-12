@@ -1,0 +1,68 @@
+TECHNOLOGY STACK AND DEVELOPMENT GUIDELINES
+
+FRONTEND TECHNOLOGIES:
+- React 18 with TypeScript
+- Material-UI for component library
+- Redux Toolkit for state management
+- React Router for navigation
+- Webpack for bundling
+- Jest and React Testing Library for testing
+
+BACKEND TECHNOLOGIES:
+- Node.js with Express framework
+- PostgreSQL as primary database
+- Redis for caching and session storage
+- AWS S3 for file storage
+- Docker for containerization
+- PM2 for process management
+
+API DEVELOPMENT:
+- RESTful API design principles
+- GraphQL for complex data queries
+- JWT tokens for authentication
+- Rate limiting implemented
+- API versioning strategy (v1, v2, etc.)
+- Comprehensive error handling
+
+DEVELOPMENT WORKFLOW:
+- Git flow branching strategy
+- Feature branches for all new development
+- Code reviews required for all PRs
+- Automated testing in CI/CD pipeline
+- Deployment through staging before production
+
+CODING STANDARDS:
+- ESLint configuration enforced
+- Prettier for code formatting
+- Husky for pre-commit hooks
+- SonarQube for code quality analysis
+- 80% test coverage minimum requirement
+
+DATABASE GUIDELINES:
+- Use migrations for schema changes
+- Proper indexing strategies
+- Regular backup procedures
+- Data retention policies defined
+- Performance monitoring in place
+
+SECURITY PRACTICES:
+- HTTPS everywhere
+- Input validation and sanitization
+- SQL injection prevention
+- XSS protection implemented
+- Regular dependency updates
+- Security audit quarterly
+
+MONITORING AND LOGGING:
+- Application performance monitoring (APM)
+- Centralized logging with ELK stack
+- Error tracking with Sentry
+- Uptime monitoring
+- Performance metrics collection
+
+DOCUMENTATION REQUIREMENTS:
+- API documentation with Swagger
+- README files for all repositories
+- Architecture decision records (ADRs)
+- Deployment runbooks
+- Code comments for complex logic
